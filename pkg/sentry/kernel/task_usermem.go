@@ -20,6 +20,7 @@ import (
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/syserror"
 	"gvisor.dev/gvisor/pkg/usermem"
+	"gvisor.dev/gvisor/tools/go_marshal/marshal"
 )
 
 // MAX_RW_COUNT is the maximum size in bytes of a single read or write.
@@ -298,4 +299,27 @@ func (t *Task) IovecsIOSequence(addr usermem.Addr, iovcnt int, opts usermem.IOOp
 		Addrs: ars,
 		Opts:  opts,
 	}, nil
+}
+
+// Unmarshal deserializes a marshallable object from the task's memory. This is
+// logically equivalent to usermem.CopyObjectIn, but more efficient as it
+// doesn't rely on runtime reflection.
+func (t *Task) Unmarshal(src usermem.Addr, dst marshal.Marshallable) error {
+	b := t.CopyScratchBuffer(dst.SizeBytes())
+	_, err := t.CopyInBytes(src, b)
+	if err != nil {
+		return err
+	}
+	dst.UnmarshalUnsafe(usermem.ByteOrder, b)
+	return nil
+}
+
+// Marshal serializes a marshallable object to the task's memory. This is
+// logically equivalent to usermem.CopyObjectOut, but more efficient as it
+// doesn't rely on runtime reflection.
+func (t *Task) Marshal(dst usermem.Addr, src marshal.Marshallable) error {
+	b := t.CopyScratchBuffer(src.SizeBytes())
+	src.MarshalUnsafe(usermem.ByteOrder, b)
+	_, err := t.CopyOutBytes(dst, b)
+	return err
 }
