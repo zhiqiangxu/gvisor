@@ -56,12 +56,18 @@ type MountOptions struct {
 	InternalMount bool
 }
 
+// OpenExtraFlags provides internal only flags for OpenAt().
+type OpenExtraFlags struct {
+	// FileExec is set when the file is being opened to be executed.
+	FileExec bool
+}
+
 // OpenOptions contains options to VirtualFilesystem.OpenAt() and
 // FilesystemImpl.OpenAt().
 type OpenOptions struct {
 	// Flags contains access mode and flags as specified for open(2).
 	//
-	// FilesystemImpls is reponsible for implementing the following flags:
+	// FilesystemImpls are responsible for implementing the following flags:
 	// O_RDONLY, O_WRONLY, O_RDWR, O_APPEND, O_CREAT, O_DIRECT, O_DSYNC,
 	// O_EXCL, O_NOATIME, O_NOCTTY, O_NONBLOCK, O_PATH, O_SYNC, O_TMPFILE, and
 	// O_TRUNC. VFS is responsible for handling O_DIRECTORY, O_LARGEFILE, and
@@ -72,6 +78,9 @@ type OpenOptions struct {
 	// If FilesystemImpl.OpenAt() creates a file, Mode is the file mode for the
 	// created file.
 	Mode linux.FileMode
+
+	// ExtraFlags contains flags not visible/settable from user mode.
+	ExtraFlags OpenExtraFlags
 }
 
 // ReadOptions contains options to FileDescription.PRead(),

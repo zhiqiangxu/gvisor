@@ -111,22 +111,20 @@ type VirtualFilesystem struct {
 	filesystems   map[*Filesystem]struct{}
 }
 
-// New returns a new VirtualFilesystem with no mounts or FilesystemTypes.
-func New() *VirtualFilesystem {
-	vfs := &VirtualFilesystem{
-		mountpoints:           make(map[*Dentry]map[*Mount]struct{}),
-		devices:               make(map[devTuple]*registeredDevice),
-		anonBlockDevMinorNext: 1,
-		anonBlockDevMinor:     make(map[uint32]struct{}),
-		fsTypes:               make(map[string]*registeredFilesystemType),
-		filesystems:           make(map[*Filesystem]struct{}),
-	}
+// Init initializes a new VirtualFilesystem with no mounts or FilesystemTypes.
+func (vfs *VirtualFilesystem) Init() error {
+	vfs.mountpoints = make(map[*Dentry]map[*Mount]struct{})
+	vfs.devices = make(map[devTuple]*registeredDevice)
+	vfs.anonBlockDevMinorNext = 1
+	vfs.anonBlockDevMinor = make(map[uint32]struct{})
+	vfs.fsTypes = make(map[string]*registeredFilesystemType)
+	vfs.filesystems = make(map[*Filesystem]struct{})
 	vfs.mounts.Init()
 
 	// Construct vfs.anonMount.
 	anonfsDevMinor, err := vfs.GetAnonBlockDevMinor()
 	if err != nil {
-		panic(fmt.Sprintf("VirtualFilesystem.GetAnonBlockDevMinor() failed during VirtualFilesystem construction: %v", err))
+		return err
 	}
 	anonfs := anonFilesystem{
 		devMinor: anonfsDevMinor,
@@ -137,8 +135,7 @@ func New() *VirtualFilesystem {
 		fs:   &anonfs.vfsfs,
 		refs: 1,
 	}
-
-	return vfs
+	return nil
 }
 
 // PathOperation specifies the path operated on by a VFS method.
@@ -379,6 +376,19 @@ func (vfs *VirtualFilesystem) OpenAt(ctx context.Context, creds *auth.Credential
 		fd, err := rp.mount.fs.impl.OpenAt(ctx, rp, *opts)
 		if err == nil {
 			vfs.putResolvingPath(rp)
+
+			if opts.ExtraFlags.FileExec {
+				// Only a regular file can be executed.
+				stat, err := fd.Stat(ctx, StatOptions{Mask: linux.STATX_TYPE})
+				if err != nil {
+					return nil, err
+				}
+				if t := linux.FileMode(stat.Mode).FileType(); t != linux.ModeRegular {
+					ctx.Infof("%q is not a regular file: %v", pop.Path, t)
+					return nil, syserror.EACCES
+				}
+			}
+
 			return fd, nil
 		}
 		if !rp.handleError(err) {
@@ -724,6 +734,8 @@ func (vfs *VirtualFilesystem) SyncAllFilesystems(ctx context.Context) error {
 // VirtualDentry methods require that a reference is held on the VirtualDentry.
 //
 // VirtualDentry is analogous to Linux's struct path.
+//
+// +stateify savable
 type VirtualDentry struct {
 	mount  *Mount
 	dentry *Dentry

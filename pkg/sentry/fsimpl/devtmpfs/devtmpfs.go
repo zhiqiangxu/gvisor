@@ -28,6 +28,9 @@ import (
 	"gvisor.dev/gvisor/pkg/sync"
 )
 
+// Name is the default filesystem name.
+const Name = "devtmpfs"
+
 // FilesystemType implements vfs.FilesystemType.
 type FilesystemType struct {
 	initOnce sync.Once
